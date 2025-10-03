@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Elite Wrapz — Scratch & Reveal</title>
+<style>
+  :root{ --brand:#01fabf; --ink:#0b0f14; --bg:#0a0e12; --card:#121820; --muted:#7b8a97; }
+  *{box-sizing:border-box}
+  body{margin:0;padding:0;background:#0a0e12;color:#e9f2f6;
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+  .wrap{max-width:600px;margin:20px auto;padding:12px;}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+  header img{height:42px;width:auto;border-radius:6px;}
+  h1{font-size:20px;margin:0;line-height:1.1;}
+  .sub{color:var(--muted);font-size:14px;}
+  .card{background:#141c26;border:1px solid rgba(1,250,191,.15);border-radius:16px;
+        padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.35);}
+  .scratch-shell{position:relative;border-radius:12px;overflow:hidden;background:#0c1117;}
+  .prize{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+         align-items:center;padding:20px;text-align:center;z-index:0;}
+  .prize h2{margin:0 0 12px 0;font-size:clamp(20px,5vw,28px);color:var(--brand);}
+  .prize p{margin:6px 0;font-size:clamp(14px,4vw,18px);}
+  .prize code{background:rgba(1,250,191,0.15);color:#01fabf;
+              padding:4px 8px;border-radius:6px;font-family:monospace;font-size:clamp(14px,4vw,18px);}
+  canvas{position:relative;display:block;width:100%;aspect-ratio:16/9;z-index:1;touch-action:none;}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+  button{flex:1;background:var(--brand);color:#002d23;font-weight:700;
+         padding:12px;border-radius:8px;border:0;cursor:pointer;font-size:16px;}
+  button.secondary{background:transparent;color:#d5e7e1;border:1px solid rgba(255,255,255,.2);}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img src="logo.png" alt="Elite Wrapz Logo"/>
+      <div>
+        <h1>Elite Wrapz — Scratch &amp; Reveal</h1>
+        <div class="sub">Discounts, gifts & exclusive upgrades!</div>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="scratch-shell">
+        <div class="prize" id="prizeArea">
+          <h2>Loading your prize...</h2>
+          <p>Please wait</p>
+        </div>
+        <canvas id="scratchCanvas"></canvas>
+      </div>
+
+      <div class="controls">
+        <button id="resetBtn">New Scratch</button>
+        <button class="secondary" id="revealBtn">Reveal Instantly</button>
+      </div>
+    </section>
+  </div>
+
+<script>
+const apiUrl = "https://script.google.com/macros/s/AKfycbxra6MQZ9f1teORQEq_pWOFcG2Bj1-6Q6OmyVoh6kyTtzoVxycxDOiR7uhNrKDjDmr0/exec";
+
+// Weighted prize pool (5% + 10% dominate, big prizes ~1 in 50)
+const prizes = [
+  { name: "5% Off Your Wrap Project", weight: 500 },
+  { name: "10% Off Your Wrap Project", weight: 350 },
+  { name: "£20 Off Your Wrap Project", weight: 80 },
+  { name: "£50 Off Your Wrap Project", weight: 40 },
+  { name: "£75 Amazon Gift Card (with booking)", weight: 10 },
+  { name: "Mystery Gift on Completion of Job (worth £150+)", weight: 10 },
+  { name: "Free Vinyl Upgrade to Commercial-Grade (if applicable)", weight: 10 }
+];
+
+function weightedPrize(){
+  const total = prizes.reduce((s,p)=>s+p.weight,0);
+  let r = Math.random()*total;
+  for(const p of prizes){ if(r < p.weight) return p.name; r -= p.weight; }
+}
+
+// Fetch prize+code immediately
+async function loadPrize(){
+  const prize = weightedPrize();
+  try {
+    const res = await fetch(apiUrl+"?action=assign&prize="+encodeURIComponent(prize));
+    const result = await res.json();
+    const area = document.getElementById("prizeArea");
+    if(result && result.code){
+      area.innerHTML = `
+        <h2>${result.prize}</h2>
+        <p>Your unique code:</p>
+        <p><code>${result.code}</code></p>
+        <p>Show this code at booking to redeem.</p>`;
+    } else {
+      area.innerHTML = "<h2>Sorry!</h2><p>No codes left for this prize.</p>";
+    }
+  } catch(err){
+    document.getElementById("prizeArea").innerHTML = "<h2>Error</h2><p>"+err+"</p>";
+  }
+}
+
+// ----- Scratch detection -----
+const canvas = document.getElementById('scratchCanvas');
+const ctx = canvas.getContext('2d');
+let isDrawing=false;
+
+function resize(){
+  const w=canvas.parentElement.offsetWidth;
+  canvas.width=w; canvas.height=w*0.5625;
+  ctx.fillStyle="#555"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#fff"; ctx.font="bold 22px sans-serif"; ctx.textAlign="center";
+  ctx.fillText("Scratch here 🎉", canvas.width/2, canvas.height/2);
+}
+resize(); window.addEventListener("resize",resize);
+
+canvas.addEventListener("pointerdown",e=>{isDrawing=true;scratch(e)});
+canvas.addEventListener("pointermove",e=>{if(isDrawing) scratch(e)});
+["pointerup","pointerleave"].forEach(ev=>canvas.addEventListener(ev,()=>isDrawing=false));
+
+function scratch(e){
+  const rect=canvas.getBoundingClientRect();
+  const x=e.clientX-rect.left, y=e.clientY-rect.top;
+  ctx.globalCompositeOperation="destination-out";
+  ctx.beginPath(); ctx.arc(x,y,25,0,Math.PI*2); ctx.fill();
+  ctx.globalCompositeOperation="source-over";
+}
+
+// Hook up buttons
+document.getElementById("resetBtn").onclick=()=>{resize(); loadPrize();};
+document.getElementById("revealBtn").onclick=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);};
+loadPrize(); // run on first load
+</script>
+</body>
+</html>
