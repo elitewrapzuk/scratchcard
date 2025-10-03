@@ -28,6 +28,9 @@
   button{flex:1;background:var(--brand);color:#002d23;font-weight:700;
          padding:12px;border-radius:8px;border:0;cursor:pointer;font-size:16px;}
   button.secondary{background:transparent;color:#d5e7e1;border:1px solid rgba(255,255,255,.2);}
+  .progress{height:12px;background:#333;border-radius:6px;margin-top:12px;overflow:hidden;}
+  .progress-inner{height:100%;width:0%;background:var(--brand);transition:width 0.2s;}
+  .terms{margin-top:15px;font-size:13px;line-height:1.5;color:#aaa;text-align:center;}
 </style>
 </head>
 <body>
@@ -49,9 +52,17 @@
         <canvas id="scratchCanvas"></canvas>
       </div>
 
+      <div class="progress"><div class="progress-inner" id="progressBar"></div></div>
+
       <div class="controls">
         <button id="resetBtn">New Scratch</button>
         <button class="secondary" id="revealBtn">Reveal Instantly</button>
+      </div>
+
+      <!-- Terms under card -->
+      <div class="terms">
+        Quote your winning code <strong>before your full quote is issued</strong>.<br>
+        Discount codes cannot be combined with other offers or discounts.
       </div>
     </section>
   </div>
@@ -59,14 +70,14 @@
 <script>
 const apiUrl = "https://script.google.com/macros/s/AKfycbxra6MQZ9f1teORQEq_pWOFcG2Bj1-6Q6OmyVoh6kyTtzoVxycxDOiR7uhNrKDjDmr0/exec";
 
-// Weighted prize pool (5% + 10% dominate, big prizes ~1 in 50)
+// Weighted prize pool (5% + 10% dominate, big prizes rare)
 const prizes = [
-  { name: "5% Off Your Wrap Project", weight: 500 },
-  { name: "10% Off Your Wrap Project", weight: 350 },
-  { name: "£20 Off Your Wrap Project", weight: 80 },
-  { name: "£50 Off Your Wrap Project", weight: 40 },
-  { name: "£75 Amazon Gift Card (with booking)", weight: 10 },
-  { name: "Mystery Gift on Completion of Job (worth £150+)", weight: 10 },
+  { name: "5% Off Your Wrap Project", weight: 700 },
+  { name: "10% Off Your Wrap Project", weight: 250 },
+  { name: "£20 Off Your Wrap Project", weight: 20 },
+  { name: "£50 Off Your Wrap Project", weight: 10 },
+  { name: "£75 Amazon Gift Card (with booking)", weight: 5 },
+  { name: "Mystery Gift on Completion of Job (worth £150+)", weight: 5 },
   { name: "Free Vinyl Upgrade to Commercial-Grade (if applicable)", weight: 10 }
 ];
 
@@ -76,24 +87,42 @@ function weightedPrize(){
   for(const p of prizes){ if(r < p.weight) return p.name; r -= p.weight; }
 }
 
-// Fetch prize+code immediately
+// Load prize either from localStorage or API
 async function loadPrize(){
+  const stored = localStorage.getItem("wrapzPrize");
+  if(stored){
+    const result = JSON.parse(stored);
+    displayPrize(result, true);
+    return;
+  }
   const prize = weightedPrize();
   try {
     const res = await fetch(apiUrl+"?action=assign&prize="+encodeURIComponent(prize));
     const result = await res.json();
-    const area = document.getElementById("prizeArea");
     if(result && result.code){
-      area.innerHTML = `
-        <h2>${result.prize}</h2>
-        <p>Your unique code:</p>
-        <p><code>${result.code}</code></p>
-        <p>Show this code at booking to redeem.</p>`;
+      localStorage.setItem("wrapzPrize", JSON.stringify(result));
+      displayPrize(result, false);
     } else {
-      area.innerHTML = "<h2>Sorry!</h2><p>No codes left for this prize.</p>";
+      document.getElementById("prizeArea").innerHTML = "<h2>Sorry!</h2><p>No codes left for this prize.</p>";
     }
   } catch(err){
     document.getElementById("prizeArea").innerHTML = "<h2>Error</h2><p>"+err+"</p>";
+  }
+}
+
+function displayPrize(result, alreadyWon){
+  const area = document.getElementById("prizeArea");
+  if(alreadyWon){
+    area.innerHTML = `
+      <h2>You’ve already scratched!</h2>
+      <p>You previously won:</p>
+      <p><strong>${result.prize}</strong></p>
+      <p>Your code: <code>${result.code}</code></p>`;
+  } else {
+    area.innerHTML = `
+      <h2>${result.prize}</h2>
+      <p>Your winning code:</p>
+      <p><code>${result.code}</code></p>`;
   }
 }
 
@@ -121,11 +150,27 @@ function scratch(e){
   ctx.globalCompositeOperation="destination-out";
   ctx.beginPath(); ctx.arc(x,y,25,0,Math.PI*2); ctx.fill();
   ctx.globalCompositeOperation="source-over";
+  updateProgress();
+}
+
+function updateProgress(){
+  const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+  let clearedPixels=0;
+  for(let i=3;i<imgData.data.length;i+=4){
+    if(imgData.data[i]===0) clearedPixels++;
+  }
+  const percent=(clearedPixels/(canvas.width*canvas.height))*100;
+  document.getElementById("progressBar").style.width=percent+"%";
+  if(percent>75){ ctx.clearRect(0,0,canvas.width,canvas.height); }
 }
 
 // Hook up buttons
-document.getElementById("resetBtn").onclick=()=>{resize(); loadPrize();};
+document.getElementById("resetBtn").onclick=()=>{ 
+  localStorage.removeItem("wrapzPrize"); 
+  resize(); loadPrize(); 
+};
 document.getElementById("revealBtn").onclick=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);};
+
 loadPrize(); // run on first load
 </script>
 </body>
